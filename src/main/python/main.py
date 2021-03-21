@@ -1,10 +1,11 @@
 from fbs_runtime.application_context.PyQt5 import ApplicationContext
 from PyQt5.QtWidgets import QWidget, QPushButton, QVBoxLayout, QLabel, \
-    QSlider, QCheckBox, QHBoxLayout, QComboBox, QLineEdit
+    QSlider, QHBoxLayout, QComboBox, QLineEdit
 from PyQt5.QtCore import Qt
 
 import sys
 import subprocess
+from threading import Timer
 
 
 class FFMPEG:
@@ -44,7 +45,7 @@ class FFMPEG:
         return device_list
 
     def start_streaming(self, key, input_device=None, system_device=None):
-        cmd = self.stream_cmd_base
+        cmd = self.stream_cmd_base.copy()
         if input_device:
             cmd += self.dshow_cmd
             cmd += [f'audio={input_device}']
@@ -60,7 +61,7 @@ class FFMPEG:
 
     def stop_streaming(self):
         self.current_stream.stdin.write(b'q')
-        self.current_stream.kill()
+        self.current_stream.stdin.flush()
         self.current_stream = None
 
     def adjust_mixer(self, *weights):
@@ -131,22 +132,6 @@ class AppContext(ApplicationContext):
         stop_button.setFixedHeight(100)
         stop_button.setEnabled(False)
 
-        def start_stream():
-            stream_key = key_field.text()
-            input_dev = mic_device.currentText()
-            system_dev = system_device.currentText()
-            self.client.start_streaming(stream_key, input_dev, system_dev)
-            stream_button.setEnabled(False)
-            stop_button.setEnabled(True)
-
-        def stop_stream():
-            self.client.stop_streaming()
-            stop_button.setEnabled(False)
-            stream_button.setEnabled(True)
-
-        stop_button.clicked.connect(stop_stream)
-        stream_button.clicked.connect(start_stream)
-
         layout_stream.addWidget(stream_button)
         layout_stream.addWidget(stop_button)
         layout_status = QVBoxLayout()
@@ -155,6 +140,27 @@ class AppContext(ApplicationContext):
         layout_status.addWidget(status_label)
         layout_stream.addLayout(layout_status)
         layout_main.addLayout(layout_stream)
+
+        def stream_ready():
+            status_label.setText("Ready to broadcast")
+
+        def start_stream():
+            stream_key = key_field.text()
+            input_dev = mic_device.currentText()
+            system_dev = system_device.currentText()
+            self.client.start_streaming(stream_key, input_dev, system_dev)
+            stream_button.setEnabled(False)
+            stop_button.setEnabled(True)
+            status_label.setText("Activating stream...")
+            Timer(11, stream_ready).start()
+
+        def stop_stream():
+            self.client.stop_streaming()
+            stop_button.setEnabled(False)
+            stream_button.setEnabled(True)
+
+        stop_button.clicked.connect(stop_stream)
+        stream_button.clicked.connect(start_stream)
 
         window.setLayout(layout_main)
         window.show()
