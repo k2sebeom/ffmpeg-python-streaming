@@ -59,8 +59,15 @@ class FFMPEG:
                                                stdin=subprocess.PIPE)
 
     def stop_streaming(self):
-        self.current_stream.communicate(b'q')
+        self.current_stream.stdin.write(b'q')
+        self.current_stream.kill()
         self.current_stream = None
+
+    def adjust_mixer(self, *weights):
+        self.current_stream.stdin.write(b'c')
+        self.current_stream.stdin.write(
+            f'amix -1 weights {weights[0]} {weights[1]}\n'.encode()
+        )
 
 
 class AppContext(ApplicationContext):
@@ -72,13 +79,16 @@ class AppContext(ApplicationContext):
         layout = QHBoxLayout()
         layout.addWidget(QLabel(title))
         slider = QSlider(Qt.Horizontal)
+        slider.setRange(1, 100)
+        slider.setSingleStep(1)
+        slider.setValue(100)
         layout.addWidget(slider)
         layout.addWidget(QLabel("Input Device"))
         device_box = QComboBox()
         device_box.addItems(self.client.get_input_devices())
         layout.addWidget(device_box)
-        layout.addWidget(QLabel('Enable: '))
-        layout.addWidget(QCheckBox())
+        # layout.addWidget(QLabel('Enable: '))
+        # layout.addWidget(QCheckBox())
 
         root.addLayout(layout)
         return slider, device_box
@@ -104,6 +114,14 @@ class AppContext(ApplicationContext):
         # Microphone Sound Panel
         mic_gain, mic_device = self.get_gain_pannel(
             'Microphone Input', layout_main)
+
+        def adjust_mixer():
+            self.client.adjust_mixer(
+                mic_gain.value() / 100, system_gain.value() / 100
+            )
+
+        system_gain.valueChanged.connect(adjust_mixer)
+        mic_gain.valueChanged.connect(adjust_mixer)
 
         # Stream Panel
         layout_stream = QHBoxLayout()
